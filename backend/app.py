@@ -33,9 +33,9 @@ async def startup_event():
     app.onedrive_connector = OneDriveConnector()
 
 
-@app.get("/")
+@app.get("/", response_class=RedirectResponse)
 async def root():
-    return RedirectResponse("public-build/index.html", status_code=fastapi.status.HTTP_200_OK)
+    return "/public-build/index.html"
 
 
 
