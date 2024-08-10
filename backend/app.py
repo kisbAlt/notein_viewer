@@ -10,7 +10,7 @@ from Note import Note
 from OneDriveConnector import OneDriveConnector
 from helper_functions import convert_color
 from fastapi.middleware.cors import CORSMiddleware
-
+import uvicorn
 app = FastAPI()
 
 # TODO:
@@ -111,3 +111,7 @@ async def refresh(token: Annotated[str | None, Header()] = None):
     if not auth(token): return JSONResponse({"message": "NotAuthorized"}, 401)
     app.onedrive_connector.load_data()
     return {"message": app.onedrive_connector.layout}
+
+
+if __name__ == "__main__":
+    uvicorn.run("app:app", port=9811, log_level="info")
