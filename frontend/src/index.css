@@ -19,9 +19,32 @@ body{
 .menu-element:hover {
   background-color: #3c46ab;
 }
+div {
+  overflow: auto;
+}
 
 .cbutton {
   padding: 10px;
   border-radius: 10px;
   cursor: pointer;
+  height: min-content;
+}
+
+.cbutton:hover {
+  border: 1px solid white;
+  padding: 9px;
+}
+
+.horizontalc {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.verticalc {
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
+.fullyc {
+  margin: auto;
 }

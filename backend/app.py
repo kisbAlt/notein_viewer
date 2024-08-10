@@ -1,12 +1,16 @@
+from typing import Annotated
+import os.path
 import fastapi
-from fastapi import FastAPI
-from starlette.responses import FileResponse, RedirectResponse
+import secrets
+from fastapi import FastAPI, Header
+from starlette.responses import FileResponse, RedirectResponse, HTMLResponse, JSONResponse
 from starlette.staticfiles import StaticFiles
 
 from Note import Note
 from OneDriveConnector import OneDriveConnector
 from helper_functions import convert_color
 from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI()
 
 # TODO:
@@ -26,17 +30,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.mount("/note_files", StaticFiles(directory="note_files"), name="note_files")
-app.mount("/public-build", StaticFiles(directory="public-build"), name="public-build")
+app.mount("/public-build", StaticFiles(directory="public-build", html=True), name="public-build")
+
 
 @app.on_event("startup")
 async def startup_event():
+    with open("public-build/index.html", "r") as htm:
+        app.indexhtml = htm.read()
     app.onedrive_connector = OneDriveConnector()
+    app.tokens = get_tokens()
 
 
-@app.get("/", response_class=RedirectResponse)
+def get_tokens():
+    if os.path.isfile("tokens.txt"):
+
+        with open("tokens.txt", "r") as tokens:
+            tkens = tokens.readlines()
+    else:
+        tken = secrets.token_hex(16)
+        tkens = [tken]
+        with open("tokens.txt", "w") as tokens:
+            tokens.write(tken)
+    return tkens
+
+
+def auth(token):
+    if token is None:
+        return False
+    elif "debug" in app.tokens:
+        return True
+    elif token in app.tokens:
+        return True
+    else:
+        return False
+
+
+@app.get("/")
 async def root():
-    return "/public-build/index.html"
+    return HTMLResponse(content=app.indexhtml, status_code=200)
 
+
+@app.get("/note")
+async def note():
+    return HTMLResponse(content=app.indexhtml, status_code=200)
 
 
 @app.get("/color")
@@ -46,19 +82,16 @@ async def color(code):
     return {"rgba": clr}
 
 
-@app.get("/test")
-async def test():
-    note = Note("note_database_note_e499a35c-52ba-4db5-9d16-d71212fb76e0_db")
-    return {"message": note.get_json()}
-
-
 @app.get("/onedrive")
-async def onedrive():
+async def onedrive(token: Annotated[str | None, Header()] = None):
+    if not auth(token): return JSONResponse({"message": "NotAuthorized"}, 401)
     return {"message": app.onedrive_connector.layout}
 
 
 @app.get("/layout")
-async def layout():
+async def layout(token: Annotated[str | None, Header()] = None):
+    if not auth(token): return JSONResponse({"message": "NotAuthorized"}, 401)
+    print(token)
     return {"message": app.onedrive_connector.layout}
 
 
@@ -74,6 +107,7 @@ async def get_note(nte_id):
 
 
 @app.get("/refresh")
-async def refresh():
+async def refresh(token: Annotated[str | None, Header()] = None):
+    if not auth(token): return JSONResponse({"message": "NotAuthorized"}, 401)
     app.onedrive_connector.load_data()
     return {"message": app.onedrive_connector.layout}

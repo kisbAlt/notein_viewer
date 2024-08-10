@@ -1,13 +1,28 @@
 import {DocumentIcon, FolderIcon} from "../components/icons";
 import {useEffect, useState} from "react";
 import {useNavigate, useSearchParams} from "react-router-dom";
+import {convertDate} from "../api_comm";
 
 
 function MainPage(props) {
     const [selectedItems, setSelectedItems] = useState([])
     const [searchParams, setSearchParams] = useSearchParams();
     const [folderData, setFolderData] = useState({
-        "parent_id": ""
+        "creation_time": 0,
+        "favorite": false,
+        "last_modification": 0,
+        "last_opened": 0,
+        "parent_id": "",
+        "title": "",
+        "tn_height": 0,
+        "tn_path": "",
+        "tn_width": 0,
+        "total_pages": 0,
+        "unbounded_note": false,
+        "user_id": "",
+        "using_own_pdf": false,
+        "level": 0,
+        "db_file": ""
     })
     const navigate = useNavigate();
     useEffect(() => {
@@ -37,26 +52,47 @@ function MainPage(props) {
             if (props.layout[i].parent_id == parent && !props.layout[i].in_trash) {
                 filtered.push(props.layout[i])
             }
-             if (props.layout[i].id == parent) {
+            if (props.layout[i].id == parent) {
                 setFolderData(props.layout[i])
-            //
-             }
+                console.log(props.layout[i])
+            }
         }
         setSelectedItems(filtered)
     }
 
     return (
-        <div style={{width: "100%", height: '100vh', backgroundColor: "#1b1c30"}}>
-            <p className={"cbutton"} onClick={() => {
-                navigate(`/?parent=${folderData.parent_id}`)
-            }}
-               style={{backgroundColor: "slateblue", width: "fit-content"}}>Back</p>
+        <div style={{width: "100%", height: '100%', backgroundColor: "#1b1c30"}}>
+            <div style={{display: "flex"}}>
+
+                <p className={"cbutton"} onClick={() => {
+                    navigate(`/?parent=${folderData.parent_id}`)
+                }}
+                   style={{backgroundColor: "slateblue", width: "fit-content"}}>Back</p>
+                <p style={{fontSize: "xx-large", margin: "auto"}}>{folderData.title}</p>
+            </div>
+            <div style={{color: "lightgray", marginBottom: "15px", zIndex: 10}}>Created:
+                <span style={{color: "goldenrod", marginLeft: "5px"}}>{convertDate(folderData.creation_time)}</span>,
+                Last modification:
+                <span style={{color: "goldenrod", marginLeft: "5px"}}>{convertDate(folderData.last_modification)}</span>
+                {folderData.favorite && <span
+                    style={{
+                        color: "yellowgreen",
+                        marginLeft: "15px",
+                        fontWeight: "bold",
+                        borderRadius: "5px",
+                        padding: "2px",
+                        border: "1px solid royalblue"
+                    }}>Favorite</span>}
+            </div>
             <div style={{
                 display: "flex",
                 flexFlow: "wrap",
                 overflowY: "scroll",
                 overflowX: "hidden",
-                maxHeight: "95vh"
+                maxHeight: "95vh",
+                width: "fit-content",
+                marginLeft: "auto",
+                marginRight: "auto"
             }}>
                 {selectedItems.map((item, i) =>
                     <div className={"menu-element"} key={i} style={{
@@ -67,8 +103,8 @@ function MainPage(props) {
                         cursor: "pointer",
                         fontSize: `20px`,
                         height: "100px",
-                        minWidth: "200px",
-                        maxWidth: "200px",
+                        minWidth: "150px",
+                        maxWidth: "150px",
                         margin: "10px",
                         position: "relative",
 

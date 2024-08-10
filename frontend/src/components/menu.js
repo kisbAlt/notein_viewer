@@ -33,24 +33,31 @@ function MainMenu(props) {
         return toRemove
     }
 
+
     return (
         <div style={{
-            width: "calc(30% - 30px)",
+            width: props.mobile ? ("100vw") : ("calc(30% - 30px)"),
             height: 'calc(100vh - 30px)',
             maxWidth: "300px",
             backgroundColor: "#141529",
             margin: '15px',
-            borderRadius: "20px"
+            borderRadius: "20px",
+            marginLeft: "auto",
+            marginRight: "auto",
+            overflowY: "hidden",
         }}>
+            <p style={{fontSize: "x-large"}}>Notein Viewer</p>
             <div onClick={() => {
-                get_refresh()
+                get_refresh().then(r => navigate("/"))
+
             }}
                 style={{display: "flex", cursor: "pointer", width: "fit-content", marginLeft: "auto",
                 marginRight: "auto", marginTop: "25px"}}>
                 <p style={{marginTop: "auto", marginBottom: "auto", marginRight: "10px"}}>Refresh</p>
                 <RefreshIcon style={{marginTop: "auto", marginBottom: "auto"}} size={25}/>
             </div>
-            <div style={{overflow: "scroll", height: "100%"}}>
+            <hr style={{width: "85%", marginTop: "20px"}}/>
+            <div style={{overflow: "scroll", height: "calc(100% - 145px)", marginLeft: "auto", marginRight: "auto"}}>
                 {props.layout.map((item, i) => {
                     return (!showedParents.includes(item.parent_id) || item.in_trash) ? ("") : (
                         <div className={"menu-element"} key={i} onClick={() => {

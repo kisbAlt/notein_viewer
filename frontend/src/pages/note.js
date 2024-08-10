@@ -1,11 +1,18 @@
-import {useEffect, useState} from "react";
-import {useNavigate, useSearchParams} from "react-router-dom";
-import {get_note} from "../api_comm";
+import {useEffect, useRef, useState} from "react";
+import {useLocation, useNavigate, useSearchParams} from "react-router-dom";
+import {convertDate, get_note} from "../api_comm";
+import app from "../App";
+import {ShareIcon} from "../components/icons";
 
-const MULTIPLIER = 2
+const MULTIPLIER = 1
+let HIGHLIGHTERS = [9, 2, 11]
+let CONSTWIDTH = [9, 2, 11, 1]
 
 export function NotePage(props) {
     const [searchParams, setSearchParams] = useSearchParams();
+    const [showData, setShowData] = useState(true)
+    const {search} = useLocation();
+    const [templateBtnColor, setTemplateBtnColor] = useState("slateblue")
     const [noteData, setNoteData] = useState({
         "creation_time": 0,
         "favorite": false,
@@ -21,57 +28,111 @@ export function NotePage(props) {
         "user_id": "",
         "using_own_pdf": false,
         "level": 0,
-        "db_file": ""
+        "db_file": "",
+        "id": ""
     })
     const [zoomVal, setZoomVal] = useState(100)
-    const [drawen, setDrawen] = useState("")
+    const zoomValRef = useRef(100);
+    const drawTemplateEnabled = useRef(true);
+
+    const [mousePressed, setMousePressed] = useState(false)
+    const [canvasTranslate, setCanvasTranslate] = useState([null, null])
+    const [canvasTransForm, setCanvasTransForm] = useState([0, 0])
     const navigate = useNavigate();
     useEffect(() => {
-
+        loadSaved()
     }, []);
 
     useEffect(() => {
         let note_id = searchParams.get("id")
-        if (note_id != drawen) {
-            setDrawen(note_id)
-            draw(note_id)
+        draw(note_id)
+
+
+        window.addEventListener("mousedown", mouseDown);
+        window.addEventListener("mouseup", mouseUp);
+        window.addEventListener("wheel", mouseWheel);
+
+        return () => {
+            window.removeEventListener("mousedown", mouseDown)
+            window.removeEventListener("mouseup", mouseUp)
+            window.removeEventListener("wheel", mouseWheel)
+        };
+    }, [search]);
+
+    function mouseUp(e) {
+        setCanvasTranslate([null, null])
+        setMousePressed(false)
+    }
+
+    function loadSaved() {
+        let showtemplate = sessionStorage.getItem("showTemplate")
+        if (showtemplate != null && showtemplate == "false") {
+            drawTemplateEnabled.current = false
+            setTemplateBtnColor("gray")
         }
-    }, [searchParams]);
+        console.log(showtemplate)
+    }
+
+    function mouseDown(e) {
+        setMousePressed(true)
+    }
+
+    function mouseWheel(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.shiftKey) {
+            if (e.deltaY > 0) {
+                zoomValRef.current = zoomValRef.current + 10
+
+                changeZoom(zoomValRef.current)
+            } else {
+                zoomValRef.current = zoomValRef.current - 10
+                changeZoom(zoomValRef.current)
+            }
+        }
+    }
 
     async function draw(note_id) {
         document.getElementById("pages").innerHTML = "";
         let json = await get_note(note_id)
+        console.log("drawing note...")
 
         setNoteData(json.message.data)
-
+        let canvases = {}
         for (let i = 0; i < json.message.pages.length; i++) {
             if (json.message.pages[i].source == 0) {
                 continue
             }
             let canvas = document.createElement('canvas');
+            canvas.style.marginRight = "auto"
+            canvas.style.marginLeft = "auto"
+            //canvas.style.imageRendering = "pixelated"
 
             let parent_w = document.getElementById("pages").getBoundingClientRect().width
 
-            let parent_h = document.getElementById("pages").style.height
+            let parent_h = document.getElementById("pages").getBoundingClientRect().height
             canvas.id = json.message.pages[i].id;
             if (json.message.pages[i].paper_theme.orientation == "VERTICAL") {
                 canvas.width = json.message.pages[i].paper_spec.width * MULTIPLIER;
                 canvas.height = json.message.pages[i].paper_spec.height * MULTIPLIER;
-            }else if (json.message.pages[i].paper_theme.orientation == "HORIZONTAL") {
+            } else if (json.message.pages[i].paper_theme.orientation == "HORIZONTAL") {
                 canvas.width = json.message.pages[i].paper_spec.height * MULTIPLIER;
                 canvas.height = json.message.pages[i].paper_spec.width * MULTIPLIER;
             }
             canvas.className = "canvas_page"
 
-            if (parent_w < json.message.pages[i].paper_spec.width * MULTIPLIER) {
-                let scale_size = (parent_w - (parent_w * (10 / 360))) / (canvas.width/MULTIPLIER)
+            let scale_size = (parent_w - (parent_w * (10 / 360))) / (canvas.width / MULTIPLIER)
 
-                canvas.style.width = `${canvas.width/MULTIPLIER * scale_size}px`;
-                canvas.style.height = `${canvas.height/MULTIPLIER * scale_size}px`;
-
-            } else {
-
+            if ((canvas.height / MULTIPLIER * scale_size) > parent_h) {
+                scale_size = (parent_h / (canvas.height / MULTIPLIER))
             }
+            canvas.style.width = `${canvas.width / MULTIPLIER * scale_size}px`;
+            canvas.style.height = `${canvas.height / MULTIPLIER * scale_size}px`;
+            // if (parent_w < json.message.pages[i].paper_spec.width * MULTIPLIER) {
+            //
+            // } else {
+            //
+            // }
 
 
             canvas.style.border = "1px solid black"
@@ -80,18 +141,20 @@ export function NotePage(props) {
                 clrs = json.message.pages[i].paper_theme.baseTheme.argb
 
             }
+            let ctx = canvas.getContext("2d");
+            canvases[json.message.pages[i].id] = ctx
+            //ctx.globalCompositeOperation = "destination-over";
+
 
             if (json.message.pages[i].paper_spec.name == "PDF") {
                 for (let j = 0; j < json.message.pdf_images.length; j++) {
                     if (json.message.pages[i].paper_theme.pdfInfo.pdfPath.includes
                         (json.message.pdf_images[j].pdf) &&
                         json.message.pages[i].paper_theme.pageNum == json.message.pdf_images[j].page) {
-                        console.log("includes")
                         let base_image = new Image();
                         let img_w = canvas.width
                         let img_h = canvas.height
                         base_image.onload = function () {
-                            let ctx = canvas.getContext("2d");
                             ctx.drawImage(base_image, 0,
                                 0, img_w, img_h);
                         }
@@ -99,67 +162,82 @@ export function NotePage(props) {
                     }
                 }
 
-            }else {
+            } else {
                 canvas.style.backgroundColor = `rgba(${clrs[1]}, ${clrs[2]}, ${clrs[3]}, ${clrs[0]})`
             }
-
+            if (drawTemplateEnabled.current) {
+                drawTemplate(ctx, json.message.pages[i].paper_theme, json.message.pages[i].paper_spec)
+            }
             let parent = document.getElementById("pages");
             parent.appendChild(canvas);
         }
         for (let j = 0; j < json.message.strokes.length; j++) {
-            let stroke_width = json.message.strokes[j].json_stroke.width;
+            // aplh48(flat,round,tape), alph100(flat,ball)
+
+
+            let stroke_width = json.message.strokes[j].json_stroke.width * MULTIPLIER;
+
+
             let points = json.message.strokes[j].json_stroke.points
+            let highliter = HIGHLIGHTERS.includes(json.message.strokes[j].json_stroke.type)
+            let constwidth = CONSTWIDTH.includes(json.message.strokes[j].json_stroke.type)
 
-
-            let canvas = document.getElementById(json.message.strokes[j].page_id);
-            let ctx = canvas.getContext("2d");
+            let ctx = canvases[json.message.strokes[j].page_id];
+            if (ctx == null) {
+                continue
+            }
 
             ctx.beginPath()
 
+            let alpha = json.message.strokes[j].json_stroke.rgba[0] / 255
+            if (highliter) {
+                stroke_width = json.message.strokes[j].json_stroke.width * 2.2;
+                ctx.globalCompositeOperation = "destination-over";
+                alpha = 0.5
+            } else {
+                ctx.globalCompositeOperation = 'destination-over';
+            }
             ctx.strokeStyle = `rgba(${json.message.strokes[j].json_stroke.rgba[1]},
                 ${json.message.strokes[j].json_stroke.rgba[2]},${json.message.strokes[j].json_stroke.rgba[3]},
-                ${json.message.strokes[j].json_stroke.rgba[0]})`;
+                ${alpha})`;
+
+            if (json.message.strokes[j].json_stroke.type == 9) {
+                ctx.lineCap = "square";
+            } else {
+                ctx.lineCap = "round";
+
+            }
 
 
             ctx.moveTo(points[0].x * MULTIPLIER, points[0].y * MULTIPLIER)
-            for (let i = 1; i < points.length - 1; i++) {
-                // ctx.lineTo(points[i].x * multiplier, points[i].y * multiplier);
+            for (let i = 1; i < points.length - 2; i++) {
+                ctx.lineWidth = stroke_width * ((constwidth) ? 1 : points[i].p)
+                // ctx.lineTo(points[i].x * MULTIPLIER, points[i].y * MULTIPLIER);
                 // ctx.stroke()
-                ctx.lineWidth = stroke_width * points[i].p
+
                 var xc = (points[i].x + points[i + 1].x) / 2;
                 var yc = (points[i].y + points[i + 1].y) / 2;
                 ctx.quadraticCurveTo(points[i].x * MULTIPLIER, points[i].y * MULTIPLIER, xc * MULTIPLIER, yc * MULTIPLIER);
-                ctx.stroke();
             }
+            let p_len = points.length - 3;
+            if (p_len > 0) {
+                ctx.lineWidth = stroke_width * ((constwidth) ? 1 : points[p_len].p)
+                ctx.quadraticCurveTo(points[p_len].x * MULTIPLIER, points[p_len].y * MULTIPLIER,
+                    points[p_len + 1].x * MULTIPLIER, points[p_len + 1].y * MULTIPLIER);
+            }
+            ctx.stroke();
+
         }
 
+
         for (let i = 0; i < json.message.shapes.length; i++) {
-            // # TYPES:
-            //         # ID 7: line (2 points)
-            // # ID 7: line (2 points)
-            // # ID 3: quadrangle (4 points)
-            // # ID 6: round (4 points)
-            // # ID 0: 3-pint curve (3 points)
-            // # ID 19: dotted_line (2 points)
-            // # ID 20: wavy line (2 points)
-            // # ID 21: arrow (pointing to y coord) (2 points)
-            // # ID 22: 2-way arrow (2 points)
-            // # ID 24: curly brackets (2 points)
-            // # ID 23: 2d coordinate system (4 points)
-            // # ID 1: triangle (3 points)
-            // # ID 9: hexagon (6 points)
-            // # ID 8: ellipse (4 points)
-            // # ID 18: ? (4 points)
-            // # ID 10: heart (4 points)
-            // # ID 13: tringular box (4 points)
-            // # ID 12: pyramid box (4 points)
-            // # ID 14: cylinder (4 points)
-            // # ID 15: cone (4 points)
-            // # ID 16: ball (4 points)
-            // # ID 17: ball_cut (4 points)
-            let canvas = document.getElementById(json.message.shapes[i].page_id);
-            let ctx = canvas.getContext("2d");
+            let ctx = canvases[json.message.shapes[i].page_id];
+            if (ctx == null) {
+                continue
+            }
             ctx.beginPath();
+
+
             ctx.lineWidth = json.message.shapes[i].width * MULTIPLIER
             ctx.strokeStyle = `rgba(${json.message.shapes[i].rgba[1]},
                 ${json.message.shapes[i].rgba[2]},${json.message.shapes[i].rgba[3]},
@@ -185,7 +263,7 @@ export function NotePage(props) {
                     break
                 }
                 case 19: {
-                    ctx.setLineDash([20, 15]);
+                    ctx.setLineDash([10 * MULTIPLIER, 7.5 * MULTIPLIER]);
                     ctx.moveTo(shape_points[0].x, shape_points[0].y);
                     ctx.lineTo(shape_points[1].x, shape_points[1].y);
                     ctx.stroke();
@@ -330,8 +408,8 @@ export function NotePage(props) {
 
                     var x = shape_points[0].x;
                     var y = shape_points[0].y;
-                    var amplitude = 6;
-                    var frequency = 6;
+                    var amplitude = 3 * MULTIPLIER;
+                    var frequency = 3 * MULTIPLIER;
                     ctx.moveTo(shape_points[0].x, shape_points[0].y)
                     //ctx.moveTo(x, y);
                     while (x < width) {
@@ -355,26 +433,42 @@ export function NotePage(props) {
                 let img_w = (json.message.images[i].bounds.right - json.message.images[i].bounds.left) * MULTIPLIER
                 let img_h = (json.message.images[i].bounds.bottom - json.message.images[i].bounds.top) * MULTIPLIER
                 base_image.onload = function () {
-                    let canvas = document.getElementById(json.message.images[i].page_id);
-                    let ctx = canvas.getContext("2d");
+                    let ctx = canvases[json.message.images[i].page_id];
+
                     ctx.drawImage(base_image, json.message.images[i].bounds.left,
                         json.message.images[i].bounds.top, img_w, img_h);
                 }
                 base_image.src = process.env.REACT_APP_LOCAL_URL + json.message.images[i].path;
             }
         }
+
     }
 
-    function convertDate(epoch) {
-        let d = new Date(epoch);
-        //d.setUTCSeconds(epoch);
-        return d.toISOString().replace("T", " ").substring(0, 16);
+    function panCanvas(event) {
+
+        if (mousePressed) {
+
+            if (canvasTranslate[0] == null) {
+
+            } else {
+                let pages = document.getElementById("pages")
+                let translateX = canvasTransForm[0] + (canvasTranslate[0] - event.clientX)
+                let translateY = canvasTransForm[1] + (canvasTranslate[1] - event.clientY)
+
+                pages.style.transform = `translate(${translateX}px, ${translateY}px)`
+                setCanvasTransForm([translateX, translateY])
+
+            }
+            setCanvasTranslate([event.clientX, event.clientY])
+        }
     }
+
 
     function changeZoom(zoom) {
         setZoomVal(zoom)
         let pages = document.getElementById("pages")
-        pages.style.scale = zoom/100
+        pages.style.scale = `${zoom / 100}`
+        //pages.style.marginTop = `${(zoom-100)*15}px`
         // for (let i = 0; i < pages.length; i++) {
         //     pages[i].style.scale = zoom/100
         // }
@@ -386,38 +480,117 @@ export function NotePage(props) {
             height: '100vh',
             backgroundColor: "#1b1c30",
             overflowY: "scroll",
-            overflowX: "hidden"
-        }}>
-            <div style={{display: "flex", width: "100%", zIndex: 10}}>
-                <p className="cbutton" onClick={() => {
-                    navigate(`/?parent=${noteData.parent_id}`)
-                }}
-                   style={{backgroundColor: "forestgreen"}}>Back to folder</p>
-                <p style={{
-                    textAlign: "center",
-                    fontSize: "xx-large",
-                    marginTop: "5px",
-                    marginBottom: "8px",
-                    marginLeft: "auto",
-                    marginRight: 'auto'
-                }}>{noteData.title}</p>
+            overflowX: "hidden",
 
-                <p style={{marginTop: "auto", marginBottom: "auto"}}>{zoomVal}%</p>
-                <div style={{marginTop: "auto", marginBottom: "auto"}} className="slidecontainer">
-                    <input onChange={(v) => {changeZoom(v.target.value)}}
-                        type="range" min="1" max="500" value={zoomVal} className="slider" id="myRange"/>
+        }}>
+            {showData && (<div>
+
+                <div style={{display: "flex", width: "100%", zIndex: 10, flexFlow: "wrap"}}>
+                    <p className="cbutton horizontalc" onClick={() => {
+                        navigate(`/?parent=${noteData.parent_id}`)
+                    }}
+                       style={{backgroundColor: "forestgreen", fontSize: "small"}}>Back to folder</p>
+                    <div>
+                        <p style={{
+                            textAlign: "center",
+                            fontSize: "xx-large",
+                            marginTop: "5px",
+                            marginBottom: "8px",
+                            marginLeft: "auto",
+                            marginRight: 'auto'
+                        }}>{noteData.title}</p>
+                        <div className={"horizontalc"}
+                             style={{
+                                 color: "lightgray", marginBottom: "15px", zIndex: 10, maxWidth: "95%",
+                                 fontSize: "small"
+                             }}>Created:
+                            <span style={{
+                                color: "goldenrod",
+                                marginLeft: "5px"
+                            }}>{convertDate(noteData.creation_time)}</span>,
+                            Last
+                            opened:
+                            <span style={{
+                                color: "goldenrod",
+                                marginLeft: "5px"
+                            }}>{convertDate(noteData.last_opened)}</span>,
+                            Last modification:
+                            <span
+                                style={{
+                                    color: "goldenrod",
+                                    marginLeft: "5px"
+                                }}>{convertDate(noteData.last_modification)}</span>
+                        </div>
+
+                    </div>
+                    <div className={"horizontalc"}>
+                        <p style={{marginTop: "auto", marginBottom: "auto"}}>{zoomVal}%</p>
+                        <div style={{marginTop: "auto", marginBottom: "auto"}} className="slidecontainer">
+                            <input onChange={(v) => {
+                                changeZoom(v.target.value)
+                            }}
+                                   type="range" min="1" max="500" value={zoomVal} className="slider" id="myRange"/>
+
+                        </div>
+                        <p style={{color: "lightgray", margin: "0", fontSize: "small"}}>Shift+mousewheel to scale</p>
+                        <div style={{display: "flex"}}>
+
+
+                            <p onClick={() => {
+                                if (drawTemplateEnabled.current) {
+                                    sessionStorage.setItem("showTemplate", "false");
+                                    setTemplateBtnColor("gray")
+                                    drawTemplateEnabled.current = false
+                                } else {
+                                    sessionStorage.setItem("showTemplate", "true");
+                                    setTemplateBtnColor("slateblue")
+                                    drawTemplateEnabled.current = true
+                                }
+                                draw(noteData.id)
+                            }}
+                               style={{
+                                   color: "lightgray", marginTop: "0", marginBottom: "0", fontSize: "small",
+                                   backgroundColor: templateBtnColor, width: "min-content"
+                               }} className={"cbutton horizontalc"}>
+                                Template</p>
+                            <div className={"cbutton"}
+                                 style={{backgroundColor: "blueviolet",
+                                     maxHeight: "30px", padding: "4px",
+                                     overflow: "hidden"}} onClick={() => {
+                                         navigator.clipboard.writeText(`${window.location.href}&shared=true`)
+                            }}>
+                                <ShareIcon size={35}/>
+                            </div>
+                        </div>
+                    </div>
 
                 </div>
-
-            </div>
-            <div style={{color: "lightgray", marginBottom: "15px",zIndex: 10}}>Created:
-                <span style={{color: "goldenrod", marginLeft: "5px"}}>{convertDate(noteData.creation_time)}</span>, Last
-                opened:
-                <span style={{color: "goldenrod", marginLeft: "5px"}}>{convertDate(noteData.last_opened)}</span>,
-                Last modification:
-                <span style={{color: "goldenrod", marginLeft: "5px"}}>{convertDate(noteData.last_modification)}</span>
-            </div>
-            <div id={"pages"} style={{zIndex: 5, width: "100%", marginLeft: "auto", marginRight: "auto", scale: zoomVal/100}}>
+            </div>)}
+            <div id={"pages"}
+                 onMouseMove={panCanvas}
+                 onScroll={(e) => {
+                     let scrollPos = document.getElementById("pages").scrollTop;
+                     console.log(scrollPos)
+                     if (showData && scrollPos > 5) {
+                         setShowData(false)
+                     } else if (!showData && scrollPos <= 5) {
+                         setShowData(true)
+                     }
+                 }}
+                 style={{
+                     zIndex: 5,
+                     width: "100%",
+                     maxWidth: "100%",
+                     overflowX: "scroll",
+                     transformOrigin: "top",
+                     minHeight: "100%",
+                     height: "100vh",
+                     marginLeft: "auto",
+                     marginRight: "auto",
+                     display: "flex",
+                     flexDirection: "column",
+                     scale: zoomVal / 100
+                 }}>
 
             </div>
         </div>
@@ -425,7 +598,7 @@ export function NotePage(props) {
 }
 
 function drawArrow(ctx, fromx, fromy, tox, toy) {
-    const headlen = 25; // length of head in pixels
+    const headlen = 13 * MULTIPLIER; // length of head in pixels
     const angle = Math.atan2(toy - fromy, tox - fromx);
 
     ctx.moveTo(fromx, fromy);
@@ -462,3 +635,70 @@ function drawEllipse(ctx, x, y, w, h) {
 }
 
 
+function drawTemplate(ctx, paperTheme, paperSpec) {
+    if (ctx == undefined || paperTheme.paperStyle == undefined) {
+        return
+    }
+    ctx.beginPath();
+    ctx.globalCompositeOperation = 'destination-over';
+    ctx.reset()
+    ctx.strokeStyle = `rgba(86, 86, 86, ${paperTheme.paperStyle.foregroundAlpha})`;
+    ctx.fillStyle = `rgba(86, 86, 86, ${paperTheme.paperStyle.foregroundAlpha})`;
+    //ctx.strokeStyle = `rgb(255, 255, 255)`;
+    let lineW = 1;
+    ctx.lineWidth = lineW;
+
+
+    let pLeft = Math.floor(paperTheme.paperStyle.leftPadding) * MULTIPLIER
+    let pTop = Math.floor(paperTheme.paperStyle.topPadding) * MULTIPLIER
+    let pRight = (paperSpec.width - paperTheme.paperStyle.rightPadding) * MULTIPLIER
+    let pBottom = (paperSpec.height - paperTheme.paperStyle.bottomPadding) * MULTIPLIER
+
+    let itemSpace = paperTheme.paperStyle.requiredItemSpace;
+    let templateWidth = pRight - pLeft
+    let templateNumWidth = Math.floor(templateWidth / itemSpace)
+    let unusedWidth = templateWidth - (templateNumWidth * itemSpace)
+
+    let templateHeight = pBottom - pTop
+    let templateNumHeight = Math.floor(templateHeight / itemSpace)
+    let unusedHeight = templateHeight - (templateNumHeight * itemSpace)
+
+    let templateStyle = paperTheme.paperStyle.type.split(".").pop()
+
+    let verticalStyles = ["NewSquarePaperStyle", "NewDotPaperStyle"].includes(templateStyle)
+    if (verticalStyles) {
+        pLeft = pLeft + unusedWidth / 2
+        pRight = pRight - unusedWidth / 2
+
+        pTop = pTop + unusedHeight / 2
+        pBottom = pBottom - unusedHeight / 2
+
+
+    }
+    let pLeftSave = pLeft;
+    let pTopSave = pTop;
+    while (verticalStyles && pLeft <= pRight) {
+        if (templateStyle == "NewDotPaperStyle") {
+            while (pTop <= pBottom) {
+                ctx.fillRect(pLeft, pTop, 3 * lineW, 3 * lineW);
+                pTop += itemSpace * MULTIPLIER
+            }
+            pTop = pTopSave
+        } else {
+            ctx.moveTo(pLeft, pTop);
+            ctx.lineTo(pLeft, pBottom)
+
+        }
+        pLeft += itemSpace * MULTIPLIER
+    }
+
+    ctx.stroke()
+    pLeft = pLeftSave
+    pTop = pTopSave
+    while (templateStyle != "NewDotPaperStyle" && pTop <= pBottom) {
+        ctx.moveTo(pLeft, pTop);
+        ctx.lineTo(pRight, pTop)
+        pTop += itemSpace * MULTIPLIER
+    }
+    ctx.stroke()
+}
