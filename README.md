@@ -50,7 +50,7 @@ Start the frontend developement server
 
 ## Screenshots
 
-![App Screenshot](documentation/screenshot1.png)
-![App Screenshot](documentation/screenshot2.png)
-![App Screenshot](documentation/screenshot3.png)
+![App Screenshot](documentation/screenshot/screenshot1.png)
+![App Screenshot](documentation/screenshot/screenshot2.png)
+![App Screenshot](documentation/screenshot/screenshot3.png)
 
